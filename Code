@@ -1,0 +1,37 @@
+import os
+import openai
+import yt_dlp
+import requests
+
+# Set up your OpenAI API key from environment variables
+openai.api_key = os.getenv('OPENAI_API_KEY')
+
+def download_audio_from_youtube(youtube_url, output_path="audio.mp3"):
+    # Download the YouTube video and extract audio using yt-dlp
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'temp_audio.%(ext)s',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+    
+    return "temp_audio.webm"
+
+def transcribe_audio_with_whisper(file_path):
+    # Convert audio to text using Whisper API
+    with open(file_path, "rb") as audio_file:
+        response = openai.Audio.transcribe("whisper-1", audio_file)
+    return response['text']
+
+def youtube_to_text(youtube_url):
+    audio_path = download_audio_from_youtube(youtube_url)
+    transcription = transcribe_audio_with_whisper(audio_path)
+    # Clean up the audio file
+    os.remove(audio_path)
+    return transcription
+
+if __name__ == "__main__":
+    youtube_url = input("Enter YouTube video URL: ")
+    transcription_text = youtube_to_text(youtube_url)
+    print("Transcription:\n")
+    print(transcription_text)
