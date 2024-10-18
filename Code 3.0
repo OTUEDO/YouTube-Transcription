@@ -1,0 +1,80 @@
+import os
+import openai
+import yt_dlp
+import ffmpeg
+
+# Set up your OpenAI API key from environment variables
+openai.api_key = os.getenv('OPENAI_API_KEY')
+
+def download_audio_from_youtube(youtube_url, output_path="audio.mp3"):
+    # Download the YouTube video and extract audio using yt-dlp
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'temp_audio.%(ext)s',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+    
+    return "temp_audio.webm"
+
+def convert_audio_to_smaller_size(input_path, output_path="smaller_audio.mp3"):
+    # Convert the audio to a smaller size using ffmpeg by lowering the bitrate
+    ffmpeg.input(input_path).output(output_path, audio_bitrate='64k').run()
+    return output_path
+
+def split_audio(input_path, chunk_duration=600):
+    """Split audio into smaller chunks, each chunk_duration seconds."""
+    output_files = []
+    ffmpeg.input(input_path).output('chunk_%03d.mp3', f='segment', segment_time=chunk_duration).run()
+    for chunk_file in os.listdir('.'):
+        if chunk_file.startswith('chunk_') and chunk_file.endswith('.mp3'):
+            output_files.append(chunk_file)
+    return output_files
+
+def transcribe_audio_with_whisper(file_path):
+    # Convert audio to text using Whisper API
+    with open(file_path, "rb") as audio_file:
+        response = openai.Audio.transcribe("whisper-1", audio_file)
+    return response['text']
+
+def youtube_to_text(youtube_url):
+    # Step 1: Download audio from YouTube
+    audio_path = download_audio_from_youtube(youtube_url)
+
+    # Step 2: Convert the downloaded audio to a smaller size
+    smaller_audio_path = convert_audio_to_smaller_size(audio_path)
+
+    # Step 3: Split the audio into chunks if it is too large
+    audio_chunks = split_audio(smaller_audio_path)
+
+    # Step 4: Transcribe each chunk and concatenate the results
+    full_transcription = ""
+    for chunk in audio_chunks:
+        transcription = transcribe_audio_with_whisper(chunk)
+        full_transcription += transcription + "\n"
+
+        # Clean up each chunk after transcription
+        os.remove(chunk)
+
+    # Clean up the audio files
+    os.remove(audio_path)
+    os.remove(smaller_audio_path)
+
+    return full_transcription
+
+if __name__ == "__main__":
+    youtube_url = input("Enter YouTube video URL: ")
+    transcription_text = youtube_to_text(youtube_url)
+    print("Transcription:\n")
+    print(transcription_text)
+
+'''
+Key Changes:
+Added split_audio function: This function uses ffmpeg to split the audio into smaller chunks, each 10 minutes (600 seconds) long by default. You can adjust the chunk size by changing the chunk_duration parameter.
+
+Transcribe in chunks: The transcription process is now handled in chunks, and the transcriptions are concatenated at the end.
+
+Benefits:
+File Size Management: By splitting the audio into smaller parts, each part will be well within the OpenAI API’s size limit.
+Automatic Cleanup: After each chunk is processed, it gets deleted to prevent clutter.
+'''
